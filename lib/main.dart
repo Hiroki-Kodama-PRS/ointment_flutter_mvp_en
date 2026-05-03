@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -86,6 +87,7 @@ class SkinEntry {
     required this.rednessScore,
     required this.createdAt,
     this.memo = '',
+    this.photoBase64,
   });
 
   final String id;
@@ -95,6 +97,7 @@ class SkinEntry {
   final int rednessScore;
   final DateTime createdAt;
   final String memo;
+  final String? photoBase64;
 
   Map<String, dynamic> toJson() => {
     'id': id,
@@ -104,6 +107,7 @@ class SkinEntry {
     'rednessScore': rednessScore,
     'createdAt': createdAt.toIso8601String(),
     'memo': memo,
+    'photoBase64': photoBase64,
   };
 
   factory SkinEntry.fromJson(Map<String, dynamic> json) => SkinEntry(
@@ -114,6 +118,7 @@ class SkinEntry {
     rednessScore: json['rednessScore'] as int,
     createdAt: DateTime.parse(json['createdAt'] as String),
     memo: (json['memo'] as String?) ?? '',
+    photoBase64: json['photoBase64'] as String?,
   );
 }
 
@@ -310,6 +315,7 @@ class _OintmentHomePageState extends State<OintmentHomePage> {
     int itchScore,
     int rednessScore,
     String memo,
+    String? photoBase64,
   ) async {
     final today = todayKey();
     final entry = SkinEntry(
@@ -319,6 +325,7 @@ class _OintmentHomePageState extends State<OintmentHomePage> {
       itchScore: itchScore,
       rednessScore: rednessScore,
       memo: memo.trim(),
+      photoBase64: photoBase64,
       createdAt: DateTime.now(),
     );
     await _save(
@@ -685,6 +692,16 @@ class SkinJournalCard extends StatelessWidget {
                         size: 44,
                         color: Colors.grey.shade700,
                       )
+                    : latest.photoBase64 != null
+                    ? ClipRRect(
+                        borderRadius: BorderRadius.circular(10),
+                        child: Image.memory(
+                          base64Decode(latest.photoBase64!),
+                          width: double.infinity,
+                          height: double.infinity,
+                          fit: BoxFit.cover,
+                        ),
+                      )
                     : Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
@@ -709,6 +726,98 @@ class SkinJournalCard extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+class PhotoPickerPanel extends StatelessWidget {
+  const PhotoPickerPanel({
+    required this.photoBase64,
+    required this.emptyText,
+    required this.buttonLabel,
+    required this.onPick,
+    required this.onRemove,
+    super.key,
+  });
+
+  final String? photoBase64;
+  final String emptyText;
+  final String buttonLabel;
+  final VoidCallback onPick;
+  final VoidCallback? onRemove;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        AspectRatio(
+          aspectRatio: 16 / 9,
+          child: Container(
+            clipBehavior: Clip.antiAlias,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: const Color(0xFFDCE3EA)),
+              color: const Color(0xFFF1F4F7),
+            ),
+            child: photoBase64 == null
+                ? Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.add_photo_alternate_outlined,
+                        size: 42,
+                        color: Colors.grey.shade700,
+                      ),
+                      const SizedBox(height: 8),
+                      Text(emptyText),
+                    ],
+                  )
+                : Image.memory(
+                    base64Decode(photoBase64!),
+                    width: double.infinity,
+                    height: double.infinity,
+                    fit: BoxFit.cover,
+                  ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: onPick,
+                icon: const Icon(Icons.photo_library_outlined),
+                label: Text(buttonLabel),
+              ),
+            ),
+            if (onRemove != null) ...[
+              const SizedBox(width: 8),
+              IconButton(
+                tooltip: 'Remove photo',
+                onPressed: onRemove,
+                icon: const Icon(Icons.delete_outline),
+              ),
+            ],
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class SkinPhotoThumbnail extends StatelessWidget {
+  const SkinPhotoThumbnail({required this.photoBase64, super.key});
+
+  final String? photoBase64;
+
+  @override
+  Widget build(BuildContext context) {
+    if (photoBase64 == null) {
+      return const CircleAvatar(child: Icon(Icons.image_outlined));
+    }
+    return CircleAvatar(
+      backgroundImage: MemoryImage(base64Decode(photoBase64!)),
     );
   }
 }
@@ -812,6 +921,7 @@ class SkinTab extends StatefulWidget {
     int itchScore,
     int rednessScore,
     String memo,
+    String? photoBase64,
   )
   onSave;
 
@@ -823,6 +933,7 @@ class _SkinTabState extends State<SkinTab> {
   var condition = 'stable';
   double itchScore = 3;
   double rednessScore = 3;
+  String? selectedPhotoBase64;
   final memoController = TextEditingController();
 
   @override
@@ -841,6 +952,18 @@ class _SkinTabState extends State<SkinTab> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               const SectionTitle("Today's Skin Status"),
+              PhotoPickerPanel(
+                photoBase64: selectedPhotoBase64,
+                emptyText: 'Select a skin photo',
+                buttonLabel: selectedPhotoBase64 == null
+                    ? 'Choose Photo'
+                    : 'Change Photo',
+                onPick: _pickPhoto,
+                onRemove: selectedPhotoBase64 == null
+                    ? null
+                    : () => setState(() => selectedPhotoBase64 = null),
+              ),
+              const SizedBox(height: 12),
               SegmentedButton<String>(
                 segments: const [
                   ButtonSegment(value: 'better', label: Text('Better')),
@@ -895,6 +1018,7 @@ class _SkinTabState extends State<SkinTab> {
                     title: Text(
                       '${formatDate(entry.date)} / ${conditionLabel(entry.condition)}',
                     ),
+                    leading: SkinPhotoThumbnail(photoBase64: entry.photoBase64),
                     subtitle: Text(
                       'Itch ${entry.itchScore}/10, redness ${entry.rednessScore}/10\n${entry.memo}',
                     ),
@@ -913,9 +1037,26 @@ class _SkinTabState extends State<SkinTab> {
       itchScore.round(),
       rednessScore.round(),
       memoController.text,
+      selectedPhotoBase64,
     );
     memoController.clear();
+    setState(() => selectedPhotoBase64 = null);
     if (mounted) _showMessage(context, "Today's skin status was saved.");
+  }
+
+  Future<void> _pickPhoto() async {
+    try {
+      final picked = await ImagePicker().pickImage(
+        source: ImageSource.gallery,
+        imageQuality: 80,
+        maxWidth: 1200,
+      );
+      if (picked == null) return;
+      final bytes = await picked.readAsBytes();
+      setState(() => selectedPhotoBase64 = base64Encode(bytes));
+    } catch (_) {
+      if (mounted) _showMessage(context, 'Could not choose a photo.');
+    }
   }
 }
 
