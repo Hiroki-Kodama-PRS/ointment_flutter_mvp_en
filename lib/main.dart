@@ -82,6 +82,7 @@ class SkinEntry {
   SkinEntry({
     required this.id,
     required this.date,
+    required this.diagnosis,
     required this.condition,
     required this.itchScore,
     required this.rednessScore,
@@ -92,6 +93,7 @@ class SkinEntry {
 
   final String id;
   final String date;
+  final String diagnosis;
   final String condition;
   final int itchScore;
   final int rednessScore;
@@ -102,6 +104,7 @@ class SkinEntry {
   Map<String, dynamic> toJson() => {
     'id': id,
     'date': date,
+    'diagnosis': diagnosis,
     'condition': condition,
     'itchScore': itchScore,
     'rednessScore': rednessScore,
@@ -113,6 +116,7 @@ class SkinEntry {
   factory SkinEntry.fromJson(Map<String, dynamic> json) => SkinEntry(
     id: json['id'] as String,
     date: json['date'] as String,
+    diagnosis: (json['diagnosis'] as String?) ?? 'notSet',
     condition: json['condition'] as String,
     itchScore: json['itchScore'] as int,
     rednessScore: json['rednessScore'] as int,
@@ -311,6 +315,7 @@ class _OintmentHomePageState extends State<OintmentHomePage> {
   }
 
   Future<void> _saveSkinEntry(
+    String diagnosis,
     String condition,
     int itchScore,
     int rednessScore,
@@ -321,6 +326,7 @@ class _OintmentHomePageState extends State<OintmentHomePage> {
     final entry = SkinEntry(
       id: _id('skin'),
       date: today,
+      diagnosis: diagnosis,
       condition: condition,
       itchScore: itchScore,
       rednessScore: rednessScore,
@@ -717,8 +723,8 @@ class SkinJournalCard extends StatelessWidget {
               latest == null
                   ? 'No skin photo or note yet.'
                   : latest.memo.isEmpty
-                  ? '${conditionLabel(latest.condition)} / No note'
-                  : latest.memo,
+                  ? '${diagnosisLabel(latest.diagnosis)} / ${conditionLabel(latest.condition)}'
+                  : '${diagnosisLabel(latest.diagnosis)} / ${latest.memo}',
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
               style: Theme.of(context).textTheme.bodySmall,
@@ -917,6 +923,7 @@ class SkinTab extends StatefulWidget {
 
   final List<SkinEntry> entries;
   final Future<void> Function(
+    String diagnosis,
     String condition,
     int itchScore,
     int rednessScore,
@@ -930,6 +937,7 @@ class SkinTab extends StatefulWidget {
 }
 
 class _SkinTabState extends State<SkinTab> {
+  var diagnosis = 'atopicDermatitis';
   var condition = 'stable';
   double itchScore = 3;
   double rednessScore = 3;
@@ -962,6 +970,11 @@ class _SkinTabState extends State<SkinTab> {
                 onRemove: selectedPhotoBase64 == null
                     ? null
                     : () => setState(() => selectedPhotoBase64 = null),
+              ),
+              const SizedBox(height: 12),
+              DiagnosisSelector(
+                value: diagnosis,
+                onChanged: (value) => setState(() => diagnosis = value),
               ),
               const SizedBox(height: 12),
               SegmentedButton<String>(
@@ -1016,11 +1029,11 @@ class _SkinTabState extends State<SkinTab> {
                   (entry) => ListTile(
                     contentPadding: EdgeInsets.zero,
                     title: Text(
-                      '${formatDate(entry.date)} / ${conditionLabel(entry.condition)}',
+                      '${formatDate(entry.date)} / ${diagnosisLabel(entry.diagnosis)}',
                     ),
                     leading: SkinPhotoThumbnail(photoBase64: entry.photoBase64),
                     subtitle: Text(
-                      'Itch ${entry.itchScore}/10, redness ${entry.rednessScore}/10\n${entry.memo}',
+                      '${conditionLabel(entry.condition)} - Itch ${entry.itchScore}/10, redness ${entry.rednessScore}/10\n${entry.memo}',
                     ),
                   ),
                 ),
@@ -1033,6 +1046,7 @@ class _SkinTabState extends State<SkinTab> {
 
   Future<void> _save() async {
     await widget.onSave(
+      diagnosis,
       condition,
       itchScore.round(),
       rednessScore.round(),
@@ -1383,6 +1397,63 @@ class ScoreSlider extends StatelessWidget {
   }
 }
 
+class DiagnosisSelector extends StatelessWidget {
+  const DiagnosisSelector({
+    required this.value,
+    required this.onChanged,
+    super.key,
+  });
+
+  final String value;
+  final ValueChanged<String> onChanged;
+
+  static const options = [
+    DiagnosisOption('atopicDermatitis', 'Atopy', Icons.healing_outlined),
+    DiagnosisOption('acne', 'Acne', Icons.face_retouching_natural_outlined),
+    DiagnosisOption('eczema', 'Eczema', Icons.spa_outlined),
+    DiagnosisOption('psoriasis', 'Psoriasis', Icons.auto_awesome_mosaic),
+    DiagnosisOption('rash', 'Rash', Icons.emergency_outlined),
+    DiagnosisOption('other', 'Other', Icons.more_horiz),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Condition Type',
+          style: Theme.of(
+            context,
+          ).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w800),
+        ),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            for (final option in options)
+              ChoiceChip(
+                avatar: Icon(option.icon, size: 18),
+                label: Text(option.label),
+                selected: value == option.value,
+                onSelected: (_) => onChanged(option.value),
+              ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class DiagnosisOption {
+  const DiagnosisOption(this.value, this.label, this.icon);
+
+  final String value;
+  final String label;
+  final IconData icon;
+}
+
 class AppCard extends StatelessWidget {
   const AppCard({required this.child, super.key});
 
@@ -1465,6 +1536,16 @@ String formatDate(String dateKey) =>
     DateFormat('MMM d (E)').format(DateTime.parse(dateKey));
 String shortDate(String dateKey) =>
     DateFormat('M/d').format(DateTime.parse(dateKey));
+
+String diagnosisLabel(String value) {
+  if (value == 'atopicDermatitis') return 'Atopy';
+  if (value == 'acne') return 'Acne';
+  if (value == 'eczema') return 'Eczema';
+  if (value == 'psoriasis') return 'Psoriasis';
+  if (value == 'rash') return 'Rash';
+  if (value == 'other') return 'Other';
+  return 'Not set';
+}
 
 String conditionLabel(String value) {
   if (value == 'better') return 'Better';
