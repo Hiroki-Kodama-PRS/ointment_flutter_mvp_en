@@ -27,5 +27,8 @@ void main() {
     expect(find.text('Condition Type'), findsOneWidget);
     expect(find.text('Atopy'), findsOneWidget);
     expect(find.text('Acne'), findsOneWidget);
+    expect(find.text('Beauty'), findsOneWidget);
+    expect(find.text('Product Type'), findsOneWidget);
+    expect(find.text('Cosmetic'), findsOneWidget);
   });
 }

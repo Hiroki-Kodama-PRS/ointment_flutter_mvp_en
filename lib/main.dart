@@ -1,12 +1,18 @@
 import 'dart:convert';
 import 'dart:math';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:timezone/data/latest.dart' as timezone_data;
+import 'package:timezone/timezone.dart' as tz;
 
-void main() {
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await ReminderNotifications.instance.initialize();
   runApp(const OintmentCareApp());
 }
 
@@ -83,10 +89,12 @@ class SkinEntry {
     required this.id,
     required this.date,
     required this.diagnosis,
+    required this.productType,
     required this.condition,
     required this.itchScore,
     required this.rednessScore,
     required this.createdAt,
+    this.productName = '',
     this.memo = '',
     this.photoBase64,
   });
@@ -94,10 +102,12 @@ class SkinEntry {
   final String id;
   final String date;
   final String diagnosis;
+  final String productType;
   final String condition;
   final int itchScore;
   final int rednessScore;
   final DateTime createdAt;
+  final String productName;
   final String memo;
   final String? photoBase64;
 
@@ -105,10 +115,12 @@ class SkinEntry {
     'id': id,
     'date': date,
     'diagnosis': diagnosis,
+    'productType': productType,
     'condition': condition,
     'itchScore': itchScore,
     'rednessScore': rednessScore,
     'createdAt': createdAt.toIso8601String(),
+    'productName': productName,
     'memo': memo,
     'photoBase64': photoBase64,
   };
@@ -117,10 +129,12 @@ class SkinEntry {
     id: json['id'] as String,
     date: json['date'] as String,
     diagnosis: (json['diagnosis'] as String?) ?? 'notSet',
+    productType: (json['productType'] as String?) ?? 'notSet',
     condition: json['condition'] as String,
     itchScore: json['itchScore'] as int,
     rednessScore: json['rednessScore'] as int,
     createdAt: DateTime.parse(json['createdAt'] as String),
+    productName: (json['productName'] as String?) ?? '',
     memo: (json['memo'] as String?) ?? '',
     photoBase64: json['photoBase64'] as String?,
   );
@@ -191,6 +205,83 @@ class AppStore {
     morningReminder: '08:00',
     eveningReminder: '21:00',
   );
+}
+
+class ReminderNotifications {
+  ReminderNotifications._();
+
+  static final instance = ReminderNotifications._();
+  static const _nextOintmentReminderId = 2401;
+  static const _androidChannelId = 'ointment_reminders';
+  static const _androidChannelName = 'Ointment reminders';
+
+  final _plugin = FlutterLocalNotificationsPlugin();
+  var _initialized = false;
+
+  Future<void> initialize() async {
+    if (_initialized || kIsWeb) return;
+
+    timezone_data.initializeTimeZones();
+
+    const androidSettings = AndroidInitializationSettings(
+      '@mipmap/ic_launcher',
+    );
+    const darwinSettings = DarwinInitializationSettings();
+    const settings = InitializationSettings(
+      android: androidSettings,
+      iOS: darwinSettings,
+      macOS: darwinSettings,
+    );
+
+    await _plugin.initialize(settings: settings);
+    await _requestPermissions();
+    _initialized = true;
+  }
+
+  Future<void> scheduleNextOintmentReminder() async {
+    if (kIsWeb) return;
+    await initialize();
+
+    await _plugin.cancel(id: _nextOintmentReminderId);
+    await _plugin.zonedSchedule(
+      id: _nextOintmentReminderId,
+      title: 'Ointment Care',
+      body: "It's time to apply your ointment.",
+      scheduledDate: tz.TZDateTime.now(tz.local).add(const Duration(hours: 24)),
+      notificationDetails: const NotificationDetails(
+        android: AndroidNotificationDetails(
+          _androidChannelId,
+          _androidChannelName,
+          channelDescription: 'Reminds you 24 hours after the previous log.',
+          importance: Importance.high,
+          priority: Priority.high,
+        ),
+        iOS: DarwinNotificationDetails(threadIdentifier: _androidChannelId),
+        macOS: DarwinNotificationDetails(threadIdentifier: _androidChannelId),
+      ),
+      androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+      payload: 'ointment_reminder',
+    );
+  }
+
+  Future<void> cancelNextOintmentReminder() async {
+    if (kIsWeb) return;
+    await initialize();
+    await _plugin.cancel(id: _nextOintmentReminderId);
+  }
+
+  Future<void> _requestPermissions() async {
+    await _plugin
+        .resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin
+        >()
+        ?.requestNotificationsPermission();
+    await _plugin
+        .resolvePlatformSpecificImplementation<
+          IOSFlutterLocalNotificationsPlugin
+        >()
+        ?.requestPermissions(alert: true, badge: true, sound: true);
+  }
 }
 
 class OintmentHomePage extends StatefulWidget {
@@ -312,10 +403,13 @@ class _OintmentHomePageState extends State<OintmentHomePage> {
       createdAt: DateTime.now(),
     );
     await _save(store.copyWith(usageRecords: [record, ...store.usageRecords]));
+    await _syncNextOintmentReminder(store.remindersEnabled);
   }
 
   Future<void> _saveSkinEntry(
     String diagnosis,
+    String productType,
+    String productName,
     String condition,
     int itchScore,
     int rednessScore,
@@ -327,6 +421,8 @@ class _OintmentHomePageState extends State<OintmentHomePage> {
       id: _id('skin'),
       date: today,
       diagnosis: diagnosis,
+      productType: productType,
+      productName: productName.trim(),
       condition: condition,
       itchScore: itchScore,
       rednessScore: rednessScore,
@@ -342,6 +438,14 @@ class _OintmentHomePageState extends State<OintmentHomePage> {
         ],
       ),
     );
+    await _syncNextOintmentReminder(store.remindersEnabled);
+  }
+
+  Future<void> _syncNextOintmentReminder(bool enabled) {
+    if (enabled) {
+      return ReminderNotifications.instance.scheduleNextOintmentReminder();
+    }
+    return ReminderNotifications.instance.cancelNextOintmentReminder();
   }
 }
 
@@ -723,8 +827,8 @@ class SkinJournalCard extends StatelessWidget {
               latest == null
                   ? 'No skin photo or note yet.'
                   : latest.memo.isEmpty
-                  ? '${diagnosisLabel(latest.diagnosis)} / ${conditionLabel(latest.condition)}'
-                  : '${diagnosisLabel(latest.diagnosis)} / ${latest.memo}',
+                  ? '${diagnosisLabel(latest.diagnosis)} / ${productSummary(latest)}'
+                  : '${diagnosisLabel(latest.diagnosis)} / ${productSummary(latest)} / ${latest.memo}',
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
               style: Theme.of(context).textTheme.bodySmall,
@@ -924,6 +1028,8 @@ class SkinTab extends StatefulWidget {
   final List<SkinEntry> entries;
   final Future<void> Function(
     String diagnosis,
+    String productType,
+    String productName,
     String condition,
     int itchScore,
     int rednessScore,
@@ -938,14 +1044,17 @@ class SkinTab extends StatefulWidget {
 
 class _SkinTabState extends State<SkinTab> {
   var diagnosis = 'atopicDermatitis';
+  var productType = 'steroidOintment';
   var condition = 'stable';
   double itchScore = 3;
   double rednessScore = 3;
   String? selectedPhotoBase64;
+  final productNameController = TextEditingController();
   final memoController = TextEditingController();
 
   @override
   void dispose() {
+    productNameController.dispose();
     memoController.dispose();
     super.dispose();
   }
@@ -975,6 +1084,18 @@ class _SkinTabState extends State<SkinTab> {
               DiagnosisSelector(
                 value: diagnosis,
                 onChanged: (value) => setState(() => diagnosis = value),
+              ),
+              const SizedBox(height: 12),
+              ProductTypeSelector(
+                value: productType,
+                onChanged: (value) => setState(() => productType = value),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: productNameController,
+                decoration: const InputDecoration(
+                  labelText: 'Ointment, medicine, or cosmetic name',
+                ),
               ),
               const SizedBox(height: 12),
               SegmentedButton<String>(
@@ -1033,7 +1154,7 @@ class _SkinTabState extends State<SkinTab> {
                     ),
                     leading: SkinPhotoThumbnail(photoBase64: entry.photoBase64),
                     subtitle: Text(
-                      '${conditionLabel(entry.condition)} - Itch ${entry.itchScore}/10, redness ${entry.rednessScore}/10\n${entry.memo}',
+                      '${productSummary(entry)} - ${conditionLabel(entry.condition)}\nItch ${entry.itchScore}/10, redness ${entry.rednessScore}/10\n${entry.memo}',
                     ),
                   ),
                 ),
@@ -1047,12 +1168,15 @@ class _SkinTabState extends State<SkinTab> {
   Future<void> _save() async {
     await widget.onSave(
       diagnosis,
+      productType,
+      productNameController.text,
       condition,
       itchScore.round(),
       rednessScore.round(),
       memoController.text,
       selectedPhotoBase64,
     );
+    productNameController.clear();
     memoController.clear();
     setState(() => selectedPhotoBase64 = null);
     if (mounted) _showMessage(context, "Today's skin status was saved.");
@@ -1182,26 +1306,9 @@ class _SettingsTabState extends State<SettingsTab> {
               ),
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,
-                title: const Text('Enable scheduled reminders'),
+                title: const Text('Enable 24-hour ointment reminders'),
                 value: remindersEnabled,
                 onChanged: (value) => setState(() => remindersEnabled = value),
-              ),
-              Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: morningController,
-                      decoration: const InputDecoration(labelText: 'Morning'),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: TextField(
-                      controller: eveningController,
-                      decoration: const InputDecoration(labelText: 'Evening'),
-                    ),
-                  ),
-                ],
               ),
               const SizedBox(height: 12),
               FilledButton.icon(
@@ -1248,6 +1355,11 @@ class _SettingsTabState extends State<SettingsTab> {
         eveningReminder: eveningController.text,
       ),
     );
+    if (remindersEnabled) {
+      await ReminderNotifications.instance.initialize();
+    } else {
+      await ReminderNotifications.instance.cancelNextOintmentReminder();
+    }
     if (mounted) _showMessage(context, 'Settings were saved.');
   }
 }
@@ -1410,6 +1522,7 @@ class DiagnosisSelector extends StatelessWidget {
   static const options = [
     DiagnosisOption('atopicDermatitis', 'Atopy', Icons.healing_outlined),
     DiagnosisOption('acne', 'Acne', Icons.face_retouching_natural_outlined),
+    DiagnosisOption('beauty', 'Beauty', Icons.auto_awesome),
     DiagnosisOption('eczema', 'Eczema', Icons.spa_outlined),
     DiagnosisOption('psoriasis', 'Psoriasis', Icons.auto_awesome_mosaic),
     DiagnosisOption('rash', 'Rash', Icons.emergency_outlined),
@@ -1423,6 +1536,54 @@ class DiagnosisSelector extends StatelessWidget {
       children: [
         Text(
           'Condition Type',
+          style: Theme.of(
+            context,
+          ).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w800),
+        ),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            for (final option in options)
+              ChoiceChip(
+                avatar: Icon(option.icon, size: 18),
+                label: Text(option.label),
+                selected: value == option.value,
+                onSelected: (_) => onChanged(option.value),
+              ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class ProductTypeSelector extends StatelessWidget {
+  const ProductTypeSelector({
+    required this.value,
+    required this.onChanged,
+    super.key,
+  });
+
+  final String value;
+  final ValueChanged<String> onChanged;
+
+  static const options = [
+    DiagnosisOption('steroidOintment', 'Steroid', Icons.medication_outlined),
+    DiagnosisOption('moisturizer', 'Moisturizer', Icons.water_drop_outlined),
+    DiagnosisOption('antibiotic', 'Antibiotic', Icons.local_pharmacy_outlined),
+    DiagnosisOption('cosmetic', 'Cosmetic', Icons.brush_outlined),
+    DiagnosisOption('other', 'Other', Icons.more_horiz),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Product Type',
           style: Theme.of(
             context,
           ).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w800),
@@ -1540,11 +1701,27 @@ String shortDate(String dateKey) =>
 String diagnosisLabel(String value) {
   if (value == 'atopicDermatitis') return 'Atopy';
   if (value == 'acne') return 'Acne';
+  if (value == 'beauty') return 'Beauty';
   if (value == 'eczema') return 'Eczema';
   if (value == 'psoriasis') return 'Psoriasis';
   if (value == 'rash') return 'Rash';
   if (value == 'other') return 'Other';
   return 'Not set';
+}
+
+String productTypeLabel(String value) {
+  if (value == 'steroidOintment') return 'Steroid';
+  if (value == 'moisturizer') return 'Moisturizer';
+  if (value == 'antibiotic') return 'Antibiotic';
+  if (value == 'cosmetic') return 'Cosmetic';
+  if (value == 'other') return 'Other';
+  return 'Product not set';
+}
+
+String productSummary(SkinEntry entry) {
+  final type = productTypeLabel(entry.productType);
+  if (entry.productName.isEmpty) return type;
+  return '$type: ${entry.productName}';
 }
 
 String conditionLabel(String value) {
