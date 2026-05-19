@@ -35,12 +35,15 @@ See [docs/iphone_replit_release_plan.md](docs/iphone_replit_release_plan.md).
 A separate Expo / React Native version lives in
 [react_native_ointment_care](react_native_ointment_care). It is intentionally
 kept outside the Flutter folders so the two implementations do not mix.
+The React Native MVP now includes splash, local auth, data consent, safe-area
+layout, richer history rows, and swipe controls for itchy/red scores.
 
 For a Replit web preview:
 
 ```bash
 cd react_native_ointment_care
 npm install
+npx expo install --fix
 npm run web
 ```
 

@@ -2,13 +2,13 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as ImagePicker from "expo-image-picker";
 import * as Notifications from "expo-notifications";
 import { StatusBar } from "expo-status-bar";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
   Image,
+  PanResponder,
   Platform,
   Pressable,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Switch,
@@ -16,6 +16,10 @@ import {
   TextInput,
   View
 } from "react-native";
+import {
+  SafeAreaProvider,
+  SafeAreaView
+} from "react-native-safe-area-context";
 
 const STORAGE_KEY = "ointment_care_react_native_mvp_v1";
 const diagnosisOptions = [
@@ -37,6 +41,9 @@ const conditionOptions = [
 ];
 
 const initialStore = {
+  profile: null,
+  dataConsentAccepted: false,
+  dataConsentAcceptedAt: null,
   usageRecords: [],
   skinEntries: [],
   dailyGoalGrams: 2,
@@ -46,10 +53,14 @@ const initialStore = {
 export default function App() {
   const [store, setStore] = useState(initialStore);
   const [isLoading, setIsLoading] = useState(true);
+  const [showSplash, setShowSplash] = useState(true);
+  const [authMode, setAuthMode] = useState("login");
   const [tab, setTab] = useState("home");
 
   useEffect(() => {
     loadStore();
+    const timer = setTimeout(() => setShowSplash(false), 900);
+    return () => clearTimeout(timer);
   }, []);
 
   const metrics = useMemo(() => buildMetrics(store), [store]);
@@ -128,71 +139,261 @@ export default function App() {
   }
 
   async function resetData() {
-    await saveStore(initialStore);
+    await saveStore({
+      ...initialStore,
+      profile: store.profile,
+      dataConsentAccepted: store.dataConsentAccepted,
+      dataConsentAcceptedAt: store.dataConsentAcceptedAt
+    });
     showMessage("Local data was reset.");
   }
 
+  async function completeAuth(profile) {
+    await saveStore({
+      ...store,
+      profile: {
+        id: makeId("user"),
+        email: profile.email.trim(),
+        displayName: profile.displayName?.trim() || "Care user",
+        createdAt: new Date().toISOString()
+      }
+    });
+  }
+
+  async function acceptDataConsent() {
+    await saveStore({
+      ...store,
+      dataConsentAccepted: true,
+      dataConsentAcceptedAt: new Date().toISOString()
+    });
+  }
+
+  if (showSplash || isLoading) {
+    return (
+      <SafeAreaProvider>
+        <SplashScreen />
+      </SafeAreaProvider>
+    );
+  }
+
+  if (!store.profile) {
+    return (
+      <SafeAreaProvider>
+        <AuthScreen
+          mode={authMode}
+          onChangeMode={setAuthMode}
+          onComplete={completeAuth}
+        />
+      </SafeAreaProvider>
+    );
+  }
+
+  if (!store.dataConsentAccepted) {
+    return (
+      <SafeAreaProvider>
+        <ConsentScreen onAccept={acceptDataConsent} />
+      </SafeAreaProvider>
+    );
+  }
+
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <StatusBar style="dark" />
-      <View style={styles.appHeader}>
-        <View>
-          <Text style={styles.appTitle}>Ointment Care</Text>
-          <Text style={styles.appSubtitle}>iPhone MVP, React Native</Text>
+    <SafeAreaProvider>
+      <SafeAreaView edges={["top"]} style={styles.safeArea}>
+        <StatusBar style="dark" />
+        <View style={styles.appHeader}>
+          <View>
+            <Text style={styles.appTitle}>Ointment Care</Text>
+            <Text style={styles.appSubtitle}>iPhone MVP, React Native</Text>
+          </View>
+          <View style={styles.statusPill}>
+            <Text style={styles.statusPillText}>Disconnected</Text>
+          </View>
         </View>
-        <View style={styles.statusPill}>
-          <Text style={styles.statusPillText}>Disconnected</Text>
-        </View>
-      </View>
 
-      <ScrollView contentContainerStyle={styles.screen}>
-        {isLoading ? (
-          <Text style={styles.emptyText}>Loading...</Text>
-        ) : (
-          <>
-            {tab === "home" && (
-              <HomeTab metrics={metrics} store={store} onAddUsage={addUsage} />
-            )}
-            {tab === "history" && <HistoryTab records={store.usageRecords} />}
-            {tab === "skin" && (
-              <SkinTab entries={store.skinEntries} onSave={saveSkinEntry} />
-            )}
-            {tab === "badges" && <BadgesTab metrics={metrics} store={store} />}
-            {tab === "settings" && (
-              <SettingsTab
-                store={store}
-                onSave={saveSettings}
-                onReset={resetData}
-              />
-            )}
-          </>
-        )}
-      </ScrollView>
+        <ScrollView contentContainerStyle={styles.screen}>
+          {tab === "home" && (
+            <HomeTab metrics={metrics} store={store} onAddUsage={addUsage} />
+          )}
+          {tab === "history" && <HistoryTab store={store} />}
+          {tab === "skin" && (
+            <SkinTab entries={store.skinEntries} onSave={saveSkinEntry} />
+          )}
+          {tab === "badges" && <BadgesTab metrics={metrics} store={store} />}
+          {tab === "settings" && (
+            <SettingsTab
+              store={store}
+              onSave={saveSettings}
+              onReset={resetData}
+            />
+          )}
+        </ScrollView>
 
-      <View style={styles.navBar}>
-        {[
-          ["home", "Home"],
-          ["history", "History"],
-          ["skin", "Skin"],
-          ["badges", "Badges"],
-          ["settings", "Settings"]
-        ].map(([value, label]) => (
-          <Pressable
-            key={value}
-            onPress={() => setTab(value)}
-            style={[styles.navItem, tab === value && styles.navItemActive]}
-          >
-            <Text
-              style={[
-                styles.navItemText,
-                tab === value && styles.navItemTextActive
-              ]}
+        <SafeAreaView edges={["bottom"]} style={styles.navBar}>
+          {[
+            ["home", "Home"],
+            ["history", "History"],
+            ["skin", "Skin"],
+            ["badges", "Badges"],
+            ["settings", "Settings"]
+          ].map(([value, label]) => (
+            <Pressable
+              key={value}
+              onPress={() => setTab(value)}
+              style={[styles.navItem, tab === value && styles.navItemActive]}
             >
-              {label}
-            </Text>
-          </Pressable>
-        ))}
+              <Text
+                style={[
+                  styles.navItemText,
+                  tab === value && styles.navItemTextActive
+                ]}
+              >
+                {label}
+              </Text>
+            </Pressable>
+          ))}
+        </SafeAreaView>
+      </SafeAreaView>
+    </SafeAreaProvider>
+  );
+}
+
+function SplashScreen() {
+  return (
+    <SafeAreaView edges={["top", "bottom"]} style={styles.splashScreen}>
+      <StatusBar style="light" />
+      <View style={styles.splashMark}>
+        <Text style={styles.splashMarkText}>OC</Text>
       </View>
+      <Text style={styles.splashTitle}>Ointment Care</Text>
+      <Text style={styles.splashSubtitle}>
+        Daily usage and skin status tracking
+      </Text>
+    </SafeAreaView>
+  );
+}
+
+function AuthScreen({ mode, onChangeMode, onComplete }) {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [displayName, setDisplayName] = useState("");
+
+  const isRegister = mode === "register";
+  const isReset = mode === "reset";
+  const title = isReset
+    ? "Reset Password"
+    : isRegister
+    ? "Create Account"
+    : "Log In";
+
+  function submit() {
+    if (!email.includes("@")) {
+      showMessage("Enter a valid email address.");
+      return;
+    }
+    if (isReset) {
+      showMessage(
+        "Password reset instructions will be sent by the auth service."
+      );
+      onChangeMode("login");
+      return;
+    }
+    if (password.length < 6) {
+      showMessage("Use a password with at least 6 characters.");
+      return;
+    }
+    onComplete({ email, displayName });
+  }
+
+  return (
+    <SafeAreaView edges={["top", "bottom"]} style={styles.authSafeArea}>
+      <StatusBar style="dark" />
+      <ScrollView contentContainerStyle={styles.authScreen}>
+        <Text style={styles.authBrand}>Ointment Care</Text>
+        <Text style={styles.authTitle}>{title}</Text>
+        <Text style={styles.bodyText}>
+          This MVP uses local sign-in state. Replace this screen with Firebase,
+          Supabase, or another production auth service before release.
+        </Text>
+        {isRegister ? (
+          <TextInput
+            onChangeText={setDisplayName}
+            placeholder="Display name"
+            style={styles.input}
+            value={displayName}
+          />
+        ) : null}
+        <TextInput
+          autoCapitalize="none"
+          keyboardType="email-address"
+          onChangeText={setEmail}
+          placeholder="Email"
+          style={styles.input}
+          value={email}
+        />
+        {!isReset ? (
+          <TextInput
+            onChangeText={setPassword}
+            placeholder="Password"
+            secureTextEntry
+            style={styles.input}
+            value={password}
+          />
+        ) : null}
+        <PrimaryButton label={title} onPress={submit} />
+        <View style={styles.authLinks}>
+          {!isRegister ? (
+            <Pressable onPress={() => onChangeMode("register")}>
+              <Text style={styles.linkText}>Create account</Text>
+            </Pressable>
+          ) : (
+            <Pressable onPress={() => onChangeMode("login")}>
+              <Text style={styles.linkText}>Already have an account</Text>
+            </Pressable>
+          )}
+          {!isReset ? (
+            <Pressable onPress={() => onChangeMode("reset")}>
+              <Text style={styles.linkText}>Reset password</Text>
+            </Pressable>
+          ) : (
+            <Pressable onPress={() => onChangeMode("login")}>
+              <Text style={styles.linkText}>Back to login</Text>
+            </Pressable>
+          )}
+        </View>
+      </ScrollView>
+    </SafeAreaView>
+  );
+}
+
+function ConsentScreen({ onAccept }) {
+  return (
+    <SafeAreaView edges={["top", "bottom"]} style={styles.authSafeArea}>
+      <StatusBar style="dark" />
+      <ScrollView contentContainerStyle={styles.authScreen}>
+        <Text style={styles.authBrand}>Ointment Care</Text>
+        <Text style={styles.authTitle}>Healthcare Data Consent</Text>
+        <Text style={styles.bodyText}>
+          This app may store ointment usage, skin condition scores, notes, and
+          photos on this device. Future versions may use anonymized healthcare
+          data to improve product quality and population-level analysis.
+        </Text>
+        <View style={styles.consentPanel}>
+          <Text style={styles.consentItem}>
+            Data used for analysis should not include your name, email address,
+            exact address, or direct identifiers.
+          </Text>
+          <Text style={styles.consentItem}>
+            Photos require extra care. Do not upload images that include your
+            face or identifying background details unless a future consent flow
+            explicitly asks for that permission.
+          </Text>
+          <Text style={styles.consentItem}>
+            This MVP is a self-management aid and does not diagnose, prescribe,
+            or replace advice from a qualified clinician.
+          </Text>
+        </View>
+        <PrimaryButton label="Accept and Continue" onPress={onAccept} />
+      </ScrollView>
     </SafeAreaView>
   );
 }
@@ -275,21 +476,39 @@ function HomeTab({ metrics, store, onAddUsage }) {
   );
 }
 
-function HistoryTab({ records }) {
+function HistoryTab({ store }) {
+  const records = store.usageRecords;
+  const skinByDate = new Map(
+    store.skinEntries.map((entry) => [entry.date, entry])
+  );
+
   return (
     <Card>
       <SectionTitle title="Usage History" />
       {records.length === 0 ? (
         <EmptyState text="No usage records yet." />
       ) : (
-        records.map((record) => (
-          <ListRow
-            key={record.id}
-            title={formatDate(record.date)}
-            subtitle={record.note || "No note"}
-            value={`${record.amountGrams.toFixed(1)}g`}
-          />
-        ))
+        records.map((record) => {
+          const skin = skinByDate.get(record.date);
+          const streak = streakThroughDate(store.usageRecords, record.date);
+          return (
+            <ListRow
+              key={record.id}
+              title={`${formatDate(record.date)} / ${record.amountGrams.toFixed(
+                1
+              )}g`}
+              subtitle={[
+                `Streak ${streak} day${streak === 1 ? "" : "s"}`,
+                skin
+                  ? `Itchy ${skin.itchScore}/10, red ${skin.rednessScore}/10`
+                  : "Itchy -, red -",
+                `Photo diary ${skin?.photoUri ? "yes" : "no"}`,
+                record.note || "No note"
+              ].join("\n")}
+              value={skin?.photoUri ? "Photo" : ""}
+            />
+          );
+        })
       )}
     </Card>
   );
@@ -300,8 +519,8 @@ function SkinTab({ entries, onSave }) {
   const [productType, setProductType] = useState("steroidOintment");
   const [productName, setProductName] = useState("");
   const [condition, setCondition] = useState("stable");
-  const [itchScore, setItchScore] = useState("3");
-  const [rednessScore, setRednessScore] = useState("3");
+  const [itchScore, setItchScore] = useState(3);
+  const [rednessScore, setRednessScore] = useState(3);
   const [memo, setMemo] = useState("");
   const [photoUri, setPhotoUri] = useState("");
 
@@ -326,8 +545,8 @@ function SkinTab({ entries, onSave }) {
       productType,
       productName: productName.trim(),
       condition,
-      itchScore: clampScore(itchScore),
-      rednessScore: clampScore(rednessScore),
+      itchScore,
+      rednessScore,
       memo: memo.trim(),
       photoUri
     });
@@ -348,7 +567,10 @@ function SkinTab({ entries, onSave }) {
             <Text style={styles.emptyText}>Select a skin photo</Text>
           </View>
         )}
-        <SecondaryButton label={photoUri ? "Change Photo" : "Choose Photo"} onPress={pickPhoto} />
+        <SecondaryButton
+          label={photoUri ? "Change Photo" : "Choose Photo"}
+          onPress={pickPhoto}
+        />
         <SegmentedControl
           label="Condition Type"
           options={diagnosisOptions}
@@ -373,9 +595,9 @@ function SkinTab({ entries, onSave }) {
           value={condition}
           onChange={setCondition}
         />
-        <ScoreInput label="Itch" value={itchScore} onChange={setItchScore} />
-        <ScoreInput
-          label="Redness"
+        <ScoreSlider label="Itchy" value={itchScore} onChange={setItchScore} />
+        <ScoreSlider
+          label="Red"
           value={rednessScore}
           onChange={setRednessScore}
         />
@@ -545,17 +767,47 @@ function SegmentedControl({ label, options, value, onChange }) {
   );
 }
 
-function ScoreInput({ label, value, onChange }) {
+function ScoreSlider({ label, value, onChange }) {
+  const [trackWidth, setTrackWidth] = useState(1);
+  const startValue = useRef(value);
+  const panResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => true,
+        onMoveShouldSetPanResponder: () => true,
+        onPanResponderGrant: (event) => {
+          const nextValue = Math.round(
+            clamp(event.nativeEvent.locationX / trackWidth, 0, 1) * 10
+          );
+          startValue.current = nextValue;
+          onChange(nextValue);
+        },
+        onPanResponderMove: (_, gesture) => {
+          const nextValue = Math.round(
+            clamp(startValue.current + (gesture.dx / trackWidth) * 10, 0, 10)
+          );
+          onChange(nextValue);
+        }
+      }),
+    [onChange, trackWidth]
+  );
+  const fillWidth = `${value * 10}%`;
+  const knobLeft = `${value * 10}%`;
+
   return (
-    <View>
-      <Text style={styles.fieldLabel}>{label} 0-10</Text>
-      <TextInput
-        keyboardType="number-pad"
-        maxLength={2}
-        onChangeText={onChange}
-        style={styles.input}
-        value={value}
-      />
+    <View style={styles.sliderBlock}>
+      <View style={styles.sliderHeader}>
+        <Text style={styles.fieldLabel}>{label}</Text>
+        <Text style={styles.sliderValue}>{value}/10</Text>
+      </View>
+      <View
+        onLayout={(event) => setTrackWidth(event.nativeEvent.layout.width)}
+        style={styles.sliderTrack}
+        {...panResponder.panHandlers}
+      >
+        <View style={[styles.sliderFill, { width: fillWidth }]} />
+        <View style={[styles.sliderKnob, { left: knobLeft }]} />
+      </View>
     </View>
   );
 }
@@ -667,6 +919,19 @@ function lastNDays(count) {
   });
 }
 
+function streakThroughDate(records, dateKey) {
+  const recordedDays = new Set(records.map((record) => record.date));
+  const cursor = new Date(`${dateKey}T00:00:00`);
+  let streak = 0;
+
+  while (recordedDays.has(cursor.toISOString().slice(0, 10))) {
+    streak += 1;
+    cursor.setDate(cursor.getDate() - 1);
+  }
+
+  return streak;
+}
+
 function makeId(prefix) {
   return `${prefix}_${Date.now()}_${Math.floor(Math.random() * 100000)}`;
 }
@@ -680,10 +945,8 @@ function labelFor(options, value) {
   return options.find(([optionValue]) => optionValue === value)?.[1] ?? value;
 }
 
-function clampScore(value) {
-  const parsed = Number.parseInt(value, 10);
-  if (!Number.isFinite(parsed)) return 0;
-  return Math.max(0, Math.min(10, parsed));
+function clamp(value, min, max) {
+  return Math.max(min, Math.min(max, value));
 }
 
 const colors = {
@@ -701,6 +964,84 @@ const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: colors.bg
+  },
+  splashScreen: {
+    alignItems: "center",
+    backgroundColor: colors.blue,
+    flex: 1,
+    justifyContent: "center",
+    padding: 24
+  },
+  splashMark: {
+    alignItems: "center",
+    backgroundColor: colors.white,
+    borderRadius: 24,
+    height: 88,
+    justifyContent: "center",
+    marginBottom: 18,
+    width: 88
+  },
+  splashMarkText: {
+    color: colors.blue,
+    fontSize: 30,
+    fontWeight: "900"
+  },
+  splashTitle: {
+    color: colors.white,
+    fontSize: 30,
+    fontWeight: "900"
+  },
+  splashSubtitle: {
+    color: "#E8F0FF",
+    fontSize: 15,
+    marginTop: 8,
+    textAlign: "center"
+  },
+  authSafeArea: {
+    backgroundColor: colors.bg,
+    flex: 1
+  },
+  authScreen: {
+    flexGrow: 1,
+    justifyContent: "center",
+    padding: 20
+  },
+  authBrand: {
+    color: colors.blue,
+    fontSize: 16,
+    fontWeight: "900",
+    marginBottom: 8
+  },
+  authTitle: {
+    color: colors.ink,
+    fontSize: 30,
+    fontWeight: "900",
+    marginBottom: 12
+  },
+  authLinks: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 18,
+    marginTop: 18
+  },
+  linkText: {
+    color: colors.blue,
+    fontSize: 14,
+    fontWeight: "800"
+  },
+  consentPanel: {
+    backgroundColor: colors.white,
+    borderColor: colors.line,
+    borderRadius: 10,
+    borderWidth: 1,
+    gap: 12,
+    marginVertical: 16,
+    padding: 16
+  },
+  consentItem: {
+    color: colors.ink,
+    fontSize: 14,
+    lineHeight: 20
   },
   appHeader: {
     alignItems: "center",
@@ -891,6 +1232,45 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "700",
     marginBottom: 8
+  },
+  sliderBlock: {
+    marginBottom: 14
+  },
+  sliderHeader: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between"
+  },
+  sliderValue: {
+    color: colors.ink,
+    fontSize: 14,
+    fontWeight: "900",
+    marginBottom: 8
+  },
+  sliderTrack: {
+    backgroundColor: colors.pale,
+    borderRadius: 999,
+    height: 34,
+    justifyContent: "center",
+    overflow: "hidden",
+    position: "relative"
+  },
+  sliderFill: {
+    backgroundColor: "#A7F3D0",
+    bottom: 0,
+    left: 0,
+    position: "absolute",
+    top: 0
+  },
+  sliderKnob: {
+    backgroundColor: colors.green,
+    borderColor: colors.white,
+    borderRadius: 14,
+    borderWidth: 3,
+    height: 28,
+    marginLeft: -14,
+    position: "absolute",
+    width: 28
   },
   segmentWrap: {
     flexDirection: "row",

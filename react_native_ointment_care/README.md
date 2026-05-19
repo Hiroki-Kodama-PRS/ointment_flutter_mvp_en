@@ -9,9 +9,12 @@ implementations can be compared or removed independently.
 ## Implemented
 
 - Manual ointment usage logging
+- Splash, login, user registration, password reset, and healthcare data consent
+  screens
 - Dashboard metrics for today, the last 7 days, adherence, and badges
-- Usage history
+- Usage history with amount, streak, itchy/red scores, and photo diary status
 - Skin status logs with photo picker
+- Swipe sliders for itchy and red scores
 - Achievement badges
 - Daily target and 24-hour reminder setting
 - Local on-device storage with AsyncStorage
@@ -23,6 +26,7 @@ Import the repository into Replit, then open a shell in this folder:
 ```bash
 cd react_native_ointment_care
 npm install
+npx expo install --fix
 npm run web
 ```
 
@@ -36,6 +40,7 @@ On a Mac with Xcode installed:
 ```bash
 cd react_native_ointment_care
 npm install
+npx expo install --fix
 npm run ios
 ```
 
@@ -56,7 +61,9 @@ macOS and Xcode. It can still be the main coding and web-preview environment.
 - Current app name: `Ointment Care`
 - Current orientation: portrait
 - iOS photo library and camera purpose strings are defined in `app.json`
+- Safe-area layout is enabled to avoid the iPhone speaker / Dynamic Island area
 - Replace placeholder metadata and app icons before TestFlight
+- Replace the local MVP auth flow with production authentication before release
 - Add privacy labels and a medical-use disclaimer before submission
 
 ## Useful Checks
