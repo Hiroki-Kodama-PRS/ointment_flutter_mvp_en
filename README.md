@@ -30,11 +30,18 @@ sign the final iOS app because App Store archives require macOS and Xcode.
 
 See [docs/iphone_replit_release_plan.md](docs/iphone_replit_release_plan.md).
 
+## React Native Rewrite
+
+A separate Expo / React Native version lives in
+[react_native_ointment_care](react_native_ointment_care). It is intentionally
+kept outside the Flutter folders so the two implementations do not mix.
+
 For a Replit web preview:
 
 ```bash
-flutter pub get
-flutter run -d web-server --web-host 0.0.0.0 --web-port 3000
+cd react_native_ointment_care
+npm install
+npm run web
 ```
 
 ## iPhone

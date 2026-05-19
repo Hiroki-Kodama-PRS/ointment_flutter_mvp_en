@@ -1,0 +1,27 @@
+{
+  "expo": {
+    "name": "Ointment Care",
+    "slug": "ointment-care",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.pharosense.ointmentcare",
+      "infoPlist": {
+        "NSPhotoLibraryUsageDescription": "Photo library access is used to attach skin photos to your journal entries.",
+        "NSCameraUsageDescription": "Camera access may be used to attach skin photos to your journal entries."
+      }
+    },
+    "android": {
+      "package": "com.pharosense.ointmentcare"
+    },
+    "web": {
+      "bundler": "metro"
+    },
+    "plugins": [
+      "expo-image-picker",
+      "expo-notifications"
+    ]
+  }
+}
