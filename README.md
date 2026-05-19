@@ -1,6 +1,8 @@
-# Ointment Care Flutter MVP (English)
+# Ointment Care Flutter MVP
 
-English Flutter / VS Code MVP for tracking ointment usage and skin status.
+Flutter MVP for tracking ointment usage and skin status. The project now keeps
+the Flutter Web MVP intact while preparing the same codebase for iPhone
+development.
 
 ## Implemented
 
@@ -15,24 +17,38 @@ English Flutter / VS Code MVP for tracking ointment usage and skin status.
 ## Development
 
 ```bash
-cd /Users/hirokikodama/ointment_flutter_mvp_en
-code .
+flutter pub get
+flutter analyze
+flutter test
 flutter run -d chrome
 ```
 
-To run as a macOS app:
+## Replit
+
+Replit is useful for web previews and shared development, but it cannot build or
+sign the final iOS app because App Store archives require macOS and Xcode.
+
+See [docs/iphone_replit_release_plan.md](docs/iphone_replit_release_plan.md).
+
+For a Replit web preview:
 
 ```bash
-flutter run -d macos
+flutter pub get
+flutter run -d web-server --web-host 0.0.0.0 --web-port 3000
 ```
 
-To run on an iPhone simulator, install the full Xcode package first.
+## iPhone
 
 ```bash
 sudo xcode-select --switch /Applications/Xcode.app/Contents/Developer
 sudo xcodebuild -runFirstLaunch
+flutter pub get
+flutter doctor
 flutter run -d ios
 ```
+
+For a real device or App Store signing, open `ios/Runner.xcworkspace` in Xcode
+and confirm the Apple Developer Team.
 
 ## Verification
 
@@ -60,6 +76,9 @@ https://Hiroki-Kodama-PRS.github.io/ointment_flutter_mvp_en/
 
 ## Next Phase
 
+- Replit web preview setup
+- iPhone simulator and real-device testing
+- App Store metadata, screenshots, privacy labels, and TestFlight
 - Photo storage
 - Bluetooth LE device integration
 - Notifications

@@ -538,18 +538,36 @@ class _HomeTabState extends State<HomeTab> {
           ),
         ),
         const SizedBox(height: 12),
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              child: RecentBadgeCard(
-                records: widget.store.usageRecords,
-                metrics: widget.metrics,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(child: SkinJournalCard(entries: widget.store.skinEntries)),
-          ],
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final badgeCard = RecentBadgeCard(
+              records: widget.store.usageRecords,
+              metrics: widget.metrics,
+            );
+            final journalCard = SkinJournalCard(
+              entries: widget.store.skinEntries,
+            );
+
+            if (constraints.maxWidth < 520) {
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  badgeCard,
+                  const SizedBox(height: 12),
+                  journalCard,
+                ],
+              );
+            }
+
+            return Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(child: badgeCard),
+                const SizedBox(width: 12),
+                Expanded(child: journalCard),
+              ],
+            );
+          },
         ),
       ],
     );
