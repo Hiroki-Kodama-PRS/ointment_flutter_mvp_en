@@ -10,7 +10,7 @@ implementations can be compared or removed independently.
 
 - Manual ointment usage logging
 - Splash, login, user registration, password reset, and healthcare data consent
-  screens
+  screens are implemented but inactive during Replit MVP testing
 - Dashboard metrics for today, the last 7 days, adherence, and badges
 - Usage history with amount, streak, itchy/red scores, and photo diary status
 - Skin status logs with photo picker
@@ -32,6 +32,10 @@ npm run web
 
 Replit should expose the Expo web preview. This is the fastest place to develop
 layout and logic.
+
+The onboarding gate is currently disabled for easier Replit testing. In
+`App.js`, change `ENABLE_ONBOARDING_FLOW` to `true` when you want to re-enable
+the splash, login, registration, password reset, and data consent screens.
 
 ## iPhone Development
 
@@ -63,7 +67,8 @@ macOS and Xcode. It can still be the main coding and web-preview environment.
 - iOS photo library and camera purpose strings are defined in `app.json`
 - Safe-area layout is enabled to avoid the iPhone speaker / Dynamic Island area
 - Replace placeholder metadata and app icons before TestFlight
-- Replace the local MVP auth flow with production authentication before release
+- Re-enable onboarding and replace the local MVP auth flow with production
+  authentication before release
 - Add privacy labels and a medical-use disclaimer before submission
 
 ## Useful Checks

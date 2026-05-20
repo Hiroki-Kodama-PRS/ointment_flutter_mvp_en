@@ -37,6 +37,8 @@ A separate Expo / React Native version lives in
 kept outside the Flutter folders so the two implementations do not mix.
 The React Native MVP now includes splash, local auth, data consent, safe-area
 layout, richer history rows, and swipe controls for itchy/red scores.
+For Replit testing, the onboarding gate is currently disabled so the app opens
+directly to the main screen.
 
 For a Replit web preview:
 

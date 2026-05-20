@@ -22,6 +22,7 @@ import {
 } from "react-native-safe-area-context";
 
 const STORAGE_KEY = "ointment_care_react_native_mvp_v1";
+const ENABLE_ONBOARDING_FLOW = false;
 const diagnosisOptions = [
   ["atopicDermatitis", "Atopy"],
   ["acne", "Acne"],
@@ -53,12 +54,13 @@ const initialStore = {
 export default function App() {
   const [store, setStore] = useState(initialStore);
   const [isLoading, setIsLoading] = useState(true);
-  const [showSplash, setShowSplash] = useState(true);
+  const [showSplash, setShowSplash] = useState(ENABLE_ONBOARDING_FLOW);
   const [authMode, setAuthMode] = useState("login");
   const [tab, setTab] = useState("home");
 
   useEffect(() => {
     loadStore();
+    if (!ENABLE_ONBOARDING_FLOW) return undefined;
     const timer = setTimeout(() => setShowSplash(false), 900);
     return () => clearTimeout(timer);
   }, []);
@@ -168,7 +170,15 @@ export default function App() {
     });
   }
 
-  if (showSplash || isLoading) {
+  if (isLoading) {
+    return (
+      <SafeAreaProvider>
+        <LoadingScreen />
+      </SafeAreaProvider>
+    );
+  }
+
+  if (ENABLE_ONBOARDING_FLOW && showSplash) {
     return (
       <SafeAreaProvider>
         <SplashScreen />
@@ -176,7 +186,7 @@ export default function App() {
     );
   }
 
-  if (!store.profile) {
+  if (ENABLE_ONBOARDING_FLOW && !store.profile) {
     return (
       <SafeAreaProvider>
         <AuthScreen
@@ -188,7 +198,7 @@ export default function App() {
     );
   }
 
-  if (!store.dataConsentAccepted) {
+  if (ENABLE_ONBOARDING_FLOW && !store.dataConsentAccepted) {
     return (
       <SafeAreaProvider>
         <ConsentScreen onAccept={acceptDataConsent} />
@@ -268,6 +278,16 @@ function SplashScreen() {
       <Text style={styles.splashSubtitle}>
         Daily usage and skin status tracking
       </Text>
+    </SafeAreaView>
+  );
+}
+
+function LoadingScreen() {
+  return (
+    <SafeAreaView edges={["top", "bottom"]} style={styles.loadingScreen}>
+      <StatusBar style="dark" />
+      <Text style={styles.loadingTitle}>Ointment Care</Text>
+      <Text style={styles.emptyText}>Loading...</Text>
     </SafeAreaView>
   );
 }
@@ -996,6 +1016,19 @@ const styles = StyleSheet.create({
     fontSize: 15,
     marginTop: 8,
     textAlign: "center"
+  },
+  loadingScreen: {
+    alignItems: "center",
+    backgroundColor: colors.bg,
+    flex: 1,
+    justifyContent: "center",
+    padding: 24
+  },
+  loadingTitle: {
+    color: colors.ink,
+    fontSize: 24,
+    fontWeight: "900",
+    marginBottom: 8
   },
   authSafeArea: {
     backgroundColor: colors.bg,
